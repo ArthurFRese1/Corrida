@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="theme-color" content="#101522">
+  <title>Corrida Chega de Intocáveis — Protótipo</title>
+  <link rel="stylesheet" href="./css/estilo.css">
+</head>
+<body>
+  <main id="game-shell">
+    <canvas id="game-canvas" aria-label="Jogo de corrida 3D"></canvas>
+
+    <section id="menu-screen" class="screen">
+      <div class="menu-panel">
+        <p class="eyebrow">PROTÓTIPO 3D • VERSÃO 0.1</p>
+        <h1>Corrida<br><span>Chega de Intocáveis</span></h1>
+        <p class="subtitle">Uma recriação independente em desenvolvimento.</p>
+        <div class="menu-actions">
+          <button id="start-button" class="primary">Começar corrida</button>
+          <button id="controls-button" class="secondary">Como jogar</button>
+        </div>
+        <div id="controls-help" class="help hidden">
+          <strong>Controles</strong>
+          <p><kbd>W</kbd> / <kbd>↑</kbd> acelera · <kbd>S</kbd> / <kbd>↓</kbd> freia ou ré</p>
+          <p><kbd>A</kbd> <kbd>D</kbd> / setas vira · <kbd>Espaço</kbd> nitro</p>
+          <p><kbd>Esc</kbd> pausa ou retoma · <kbd>R</kbd> reposiciona o kart</p>
+          <p>No celular, use os controles na parte inferior da tela.</p>
+        </div>
+        <p class="fine-print">Protótipo feito com HTML, CSS, JavaScript e Three.js. Arte provisória criada por código.</p>
+      </div>
+    </section>
+
+    <section id="hud" class="hidden" aria-live="polite">
+      <div class="hud-top">
+        <div class="hud-card"><span class="hud-label">VOLTA</span><strong id="lap-value">1 / 3</strong></div>
+        <div class="hud-card position"><span class="hud-label">POSIÇÃO</span><strong id="position-value">1º</strong></div>
+        <div class="hud-card speed-card"><strong id="speed-value">000</strong><span>km/h</span></div>
+      </div>
+      <div class="race-message" id="race-message">PREPARE-SE!</div>
+      <div class="hud-bottom">
+        <div class="nitro-wrap"><div class="nitro-label">NITRO</div><div class="nitro-track"><div id="nitro-fill"></div></div></div>
+        <div id="item-indicator" class="item-indicator">ITEM: —</div>
+      </div>
+      <div class="mobile-controls" id="mobile-controls">
+        <div class="mobile-steer">
+          <button data-control="left" aria-label="Virar à esquerda">◀</button>
+          <button data-control="right" aria-label="Virar à direita">▶</button>
+        </div>
+        <div class="mobile-go">
+          <button data-control="brake" aria-label="Frear">▼</button>
+          <button data-control="nitro" class="nitro-button" aria-label="Usar nitro">NITRO</button>
+          <button data-control="accelerate" class="accelerate" aria-label="Acelerar">▲</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="pause-screen" class="screen hidden">
+      <div class="menu-panel compact">
+        <p class="eyebrow">CORRIDA PAUSADA</p>
+        <h2>Pausa</h2>
+        <button id="resume-button" class="primary">Continuar</button>
+        <button id="restart-button" class="secondary">Recomeçar corrida</button>
+        <button id="menu-button" class="secondary">Voltar ao menu</button>
+      </div>
+    </section>
+
+    <section id="finish-screen" class="screen hidden">
+      <div class="menu-panel compact">
+        <p class="eyebrow">FIM DA CORRIDA</p>
+        <h2 id="finish-title">Boa corrida!</h2>
+        <p id="finish-description">Você completou a prova.</p>
+        <button id="race-again-button" class="primary">Correr novamente</button>
+        <button id="finish-menu-button" class="secondary">Voltar ao menu</button>
+      </div>
+    </section>
+    <div id="loading-note">Carregando pista 3D…</div>
+  </main>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

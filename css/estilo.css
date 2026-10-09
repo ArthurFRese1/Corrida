@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  color-scheme: dark;
+  --ink: #f5f7fb;
+  --muted: #b8c0d0;
+  --panel: rgba(12, 17, 29, .88);
+  --line: rgba(255,255,255,.14);
+  --accent: #ffca48;
+  --accent2: #ff7b37;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101522; color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+button { font: inherit; cursor: pointer; border: 0; touch-action: manipulation; }
+#game-shell { position: relative; width: 100%; height: 100%; isolation: isolate; background: #101522; }
+#game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+.screen { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 22px; background: linear-gradient(90deg, rgba(6,10,20,.76), rgba(6,10,20,.23) 70%), linear-gradient(0deg, rgba(6,10,20,.45), transparent 55%); }
+.hidden { display: none !important; }
+.menu-panel { width: min(540px, 100%); padding: clamp(24px, 4vw, 44px); border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 24px 80px rgba(0,0,0,.38); backdrop-filter: blur(14px); }
+.menu-panel.compact { width: min(420px, 100%); text-align: center; }
+.eyebrow { color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .19em; margin: 0 0 14px; }
+h1, h2 { font-family: 'Barlow Condensed', Impact, sans-serif; text-transform: uppercase; line-height: .91; letter-spacing: -.025em; margin: 0; }
+h1 { font-size: clamp(48px, 7vw, 82px); }
+h1 span { color: var(--accent); }
+h2 { font-size: 56px; margin-bottom: 22px; }
+.subtitle { color: var(--muted); margin: 20px 0 26px; line-height: 1.5; }
+.menu-actions { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
+.primary, .secondary { min-height: 48px; padding: 13px 18px; border-radius: 10px; font-weight: 800; transition: transform .15s, filter .15s; }
+.primary { color: #171717; background: linear-gradient(135deg, var(--accent), #ff9b38); box-shadow: 0 7px 22px rgba(255,172,47,.2); }
+.secondary { color: var(--ink); border: 1px solid var(--line); background: rgba(255,255,255,.07); }
+.primary:hover, .secondary:hover { transform: translateY(-2px); filter: brightness(1.08); }
+.compact button { display: block; width: 100%; margin-top: 10px; }
+.help { margin-top: 20px; padding: 15px; background: rgba(255,255,255,.055); border-radius: 12px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.help strong { color: var(--ink); }
+.help p { margin: 8px 0 0; }
+kbd { border: 1px solid #596173; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; color: white; background: #252d3d; }
+.fine-print { margin: 22px 0 0; font-size: 10px; color: #929bad; line-height: 1.5; }
+#hud { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.hud-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 20px; }
+.hud-card { display: flex; flex-direction: column; gap: 3px; min-width: 82px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(10,15,25,.7); backdrop-filter: blur(8px); }
+.hud-label, .nitro-label { font-size: 9px; letter-spacing: .15em; font-weight: 800; color: #aab4c8; }
+.hud-card strong { font-family: 'Barlow Condensed', Impact, sans-serif; font-size: 27px; line-height: 1; }
+.position { text-align: center; }
+.speed-card { flex-direction: row; align-items: baseline; gap: 6px; }
+.speed-card strong { font-size: 36px; }
+.speed-card span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.race-message { position: absolute; top: 24%; left: 50%; transform: translateX(-50%); color: var(--accent); font-family: 'Barlow Condensed', Impact, sans-serif; font-size: clamp(34px, 6vw, 72px); font-weight: 900; letter-spacing: .05em; text-shadow: 0 4px 20px rgba(0,0,0,.7); text-align: center; white-space: nowrap; }
+.hud-bottom { position: absolute; bottom: 22px; left: 22px; right: 22px; display: flex; align-items: end; justify-content: space-between; gap: 16px; }
+.nitro-wrap { width: min(260px, 42vw); padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(10,15,25,.72); }
+.nitro-track { height: 8px; margin-top: 8px; background: rgba(255,255,255,.12); border-radius: 20px; overflow: hidden; }
+#nitro-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #21c9ff, #a6f6ff); border-radius: inherit; transition: width .1s linear; }
+.item-indicator { padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; background: rgba(10,15,25,.72); font-size: 11px; font-weight: 800; letter-spacing: .06em; }
+#loading-note { position: absolute; z-index: 10; bottom: 8px; left: 10px; color: rgba(255,255,255,.6); font-size: 10px; pointer-events: none; }
+.mobile-controls { display: none; position: absolute; bottom: 88px; left: 14px; right: 14px; justify-content: space-between; align-items: end; pointer-events: auto; }
+.mobile-controls button { width: 54px; height: 54px; border-radius: 50%; color: white; font-weight: 900; background: rgba(14,20,33,.78); border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(6px); }
+.mobile-steer, .mobile-go { display: flex; gap: 8px; align-items: center; }
+.mobile-controls .accelerate { background: rgba(255,183,47,.92); color: #1b1b1b; }
+.mobile-controls .nitro-button { width: 58px; height: 44px; border-radius: 12px; color: #101522; background: #62e8ff; font-size: 10px; }
+@media (pointer: coarse), (max-width: 760px) {
+  .screen { padding: 14px; }
+  .menu-panel { padding: 25px 22px; }
+  .menu-actions { grid-template-columns: 1fr; }
+  .hud-top { padding: 10px; }
+  .hud-card { min-width: 66px; padding: 8px 10px; }
+  .hud-card strong { font-size: 23px; }
+  .speed-card strong { font-size: 30px; }
+  .race-message { top: 20%; }
+  .mobile-controls { display: flex; }
+  .hud-bottom { bottom: 10px; left: 10px; right: 10px; }
+  .nitro-wrap { width: 45%; }
+  .item-indicator { font-size: 9px; padding: 10px; }
+}
