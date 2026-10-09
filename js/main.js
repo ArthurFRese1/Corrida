@@ -130,6 +130,14 @@ function clearRaceObjects() {
   items = createItems(scene, track);
 }
 
+function progressFromFinish(progress) {
+  return (progress - 0.25 + 1) % 1;
+}
+
+function raceScore(lap, progress) {
+  return lap + progressFromFinish(progress);
+}
+
 function resetRace() {
   speed = 0;
   nitro = 100;
@@ -180,21 +188,13 @@ function updateHud() {
     : 'ITEM: —';
 
   const playerProgress = track.progressAt(player.root.position);
-  const playerProgressFromFinish =
-    (playerProgress - 0.25 + 1) % 1;
-
-  const playerScore =
-    (currentLap - 1) + playerProgressFromFinish;
+  const playerScore = raceScore(currentLap - 1, playerProgress);
 
   let rank = 1;
 
   if (opponents) {
     for (const op of opponents.list) {
-      const opponentProgressFromFinish =
-        (op.progress - 0.25 + 1) % 1;
-
-      const opponentScore =
-        op.lap + opponentProgressFromFinish;
+      const opponentScore = raceScore(op.lap, op.progress);
 
       if (opponentScore > playerScore) {
         rank++;
@@ -272,6 +272,12 @@ function formatTime(seconds) {
   const secs = (seconds % 60).toFixed(2).padStart(5, '0');
 
   return `${String(mins).padStart(2, '0')}:${secs}`;
+}
+
+function refreshFinishPosition() {
+  const finalRank = parseInt(positionValue.textContent, 10) || 1;
+  finishDescription.textContent =
+    `Posicao final: ${finalRank} - Tempo: ${formatTime(finishTime)}`;
 }
 
 startButton.addEventListener('click', startRace);
@@ -385,7 +391,7 @@ function updatePlayer(dt) {
   if (accelerate) {
     speed += CONFIG.player.acceleration * dt;
   } else if (speed > 0) {
-    speed = Math.max(0, speed - 5.2 * dt);
+    speed = Math.max(0, speed - 4.4 * dt);
   } else if (speed < 0) {
     speed = Math.min(0, speed + 5.2 * dt);
   }
@@ -438,6 +444,12 @@ function updatePlayer(dt) {
     .applyQuaternion(player.root.quaternion);
 
   player.root.position.addScaledVector(forward, speed * dt);
+
+  // Pequena perda de aderência em alta velocidade para deixar as curvas
+  // mais agressivas sem mover o kart artificialmente de faixa.
+  if (steer !== 0 && Math.abs(speed) > 24) {
+    speed = Math.max(0, speed - Math.abs(steer) * 0.7 * dt);
+  }
 
   player.wheels.forEach(wheel => {
     wheel.rotation.x += speed * dt * 0.65;
@@ -532,16 +544,29 @@ function updatePlayer(dt) {
     for (const op of opponents.list) {
       const dx = player.root.position.x - op.root.position.x;
       const dz = player.root.position.z - op.root.position.z;
+      const distanceSquared = dx * dx + dz * dz;
 
       if (
-        dx * dx + dz * dz < 10 &&
+        distanceSquared < 11 &&
         invulnerable <= 0
       ) {
-        speed *= 0.62;
+        const distance = Math.sqrt(distanceSquared) || 1;
+        const push = new THREE.Vector3(dx / distance, 0, dz / distance);
+        const outward = new THREE.Vector3(
+          player.root.position.x / (track.rx * track.rx),
+          0,
+          player.root.position.z / (track.rz * track.rz)
+        ).normalize();
+
+        speed *= 0.68;
         nitro = Math.max(0, nitro - 8);
         invulnerable = 0.8;
 
-        player.root.position.addScaledVector(forward, -1.5);
+        player.root.position.addScaledVector(push, 1.1);
+        player.root.position.addScaledVector(outward, 2.2);
+        op.speed *= CONFIG.opponent.collisionSlowdown;
+        op.bumpTimer = 0.35;
+        op.outwardOffset += 2.2;
       }
     }
   }
@@ -611,6 +636,11 @@ function animate(now) {
         speed,
         raceStarted
       );
+      updateHud();
+
+      if (gameState === 'finished') {
+        refreshFinishPosition();
+      }
     }
 
     if (items) {
@@ -618,13 +648,19 @@ function animate(now) {
         dt,
         track.progressAt(player.root.position),
         player.root.position,
-        () => {
+        collector => {
+          if (collector) {
+            collector.nitro = Math.min(100, collector.nitro + 32);
+            return;
+          }
+
           collectedItem = true;
           itemType = 'IMPULSO';
 
           itemIndicator.textContent = 'ITEM: IMPULSO (ESPAÇO)';
           nitro = Math.min(100, nitro + 24);
-        }
+        },
+        opponents ? opponents.list : []
       );
     }
 

@@ -22,7 +22,7 @@ export function createItems(scene, track) {
   }
   return {
     list: items,
-    update(dt, playerProgress, playerPosition, onCollect) {
+    update(dt, playerProgress, playerPosition, onCollect, collectors = []) {
       for (const item of items) {
         item.mesh.rotation.y += dt * 1.2;
         item.mesh.rotation.x += dt * .35;
@@ -34,13 +34,25 @@ export function createItems(scene, track) {
           }
           continue;
         }
-        const dx = item.mesh.position.x - playerPosition.x;
-        const dz = item.mesh.position.z - playerPosition.z;
-        if (dx * dx + dz * dz < 20) {
+        const possibleCollectors = [
+          { entity: null, position: playerPosition },
+          ...collectors.filter(entity => !entity.finished).map(entity => ({
+            entity,
+            position: entity.root.position
+          }))
+        ];
+
+        const collector = possibleCollectors.find(candidate => {
+          const dx = item.mesh.position.x - candidate.position.x;
+          const dz = item.mesh.position.z - candidate.position.z;
+          return dx * dx + dz * dz < 20;
+        });
+
+        if (collector) {
           item.active = false;
           item.respawn = 7;
           item.mesh.visible = false;
-          onCollect();
+          onCollect(collector.entity, item);
         }
       }
     },

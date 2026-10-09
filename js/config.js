@@ -1,5 +1,5 @@
 export const CONFIG = {
-  lapsToWin: 3,
+  lapsToWin: 4,
   track: {
     radiusX: 92,
     radiusZ: 58,
@@ -8,11 +8,18 @@ export const CONFIG = {
     centerY: 0
   },
   player: {
-    maxSpeed: 47,
-    acceleration: 24,
-    braking: 38,
+    maxSpeed: 50,
+    acceleration: 28,
+    braking: 44,
     reverseSpeed: 13,
-    steering: 2.1
+    steering: 2.25
+  },
+  opponent: {
+    baseSpeed: 38,
+    speedStep: 2.4,
+    speedVariation: 2.2,
+    laneChangeSpeed: 8.5,
+    collisionSlowdown: 0.78
   },
   opponentCount: 5,
   itemCount: 12
