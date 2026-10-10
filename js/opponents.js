@@ -17,9 +17,10 @@ const FINISH_LINE_PROGRESS = 0.25;
 const LANE_LIMIT = 4.3;
 const OVERTAKE_LOOK_AHEAD = 0.085;
 const SAFE_LANE_GAP = 0.055;
-const NITRO_DURATION = 1.25;
+const NITRO_DURATION = 1.1;
 const NITRO_COOLDOWN = 4.5;
-const NITRO_SPEED_BONUS = 14;
+const NITRO_SPEED_BONUS = 7;
+const NITRO_CONSUMPTION = 31;
 const OUTWARD_RECOVERY_SPEED = 1.6;
 
 const PERSONALITIES = [
@@ -381,13 +382,20 @@ export function createOpponents(scene, track, count) {
             CONFIG.opponent.laneChangeSpeed * dt
           );
 
+          const nitroUseful =
+            op.intent === 'overtake' ||
+            (obstacleAhead &&
+              op.speed > obstacleAhead.speed + 0.5 &&
+              closestDistance < 0.06) ||
+            (!obstacleAhead &&
+              op.personality.aggression > 0.72 &&
+              Math.sin(op.progress * Math.PI * 2 + op.wobble) > 0.35);
+
           if (
             !op.nitroActive &&
             op.nitro > 0 &&
             op.nitroCooldown <= 0 &&
-            (!obstacleAhead ||
-              op.personality.aggression > 0.55 ||
-              op.intent === 'overtake')
+            nitroUseful
           ) {
             op.nitroActive = true;
             op.nitroTimer = NITRO_DURATION;
@@ -396,7 +404,7 @@ export function createOpponents(scene, track, count) {
 
           if (op.nitroActive) {
             op.nitroTimer -= dt;
-            op.nitro = Math.max(0, op.nitro - 31 * dt);
+            op.nitro = Math.max(0, op.nitro - NITRO_CONSUMPTION * dt);
 
             if (op.nitroTimer <= 0 || op.nitro <= 0) {
               op.nitroActive = false;
@@ -454,7 +462,7 @@ export function createOpponents(scene, track, count) {
             const terrainFactor = op.offRoad
               ? 0.42 + op.pilot.recoverySkill * 0.16
               : 1;
-            const targetSpeed = Math.max(0, (
+            const targetSpeed = Math.min(CONFIG.player.maxSpeed, Math.max(0, (
               op.baseSpeed +
               Math.sin(performance.now() * 0.0007 + op.wobble) *
               CONFIG.opponent.speedVariation -
@@ -463,7 +471,7 @@ export function createOpponents(scene, track, count) {
               trajectoryPenalty -
               (blocked ? 5 : 0) -
               (op.bumpTimer > 0 ? 6 : 0)
-            ) * terrainFactor);
+            ) * terrainFactor));
 
             const controlRate = op.collisionRecovery > 0 ? 0.9 : 3.5;
             op.speed += (targetSpeed - op.speed) *

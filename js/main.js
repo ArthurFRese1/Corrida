@@ -84,6 +84,9 @@ const playerImpactVelocity = new THREE.Vector2();
 let nitro = 100;
 let nitroActive = false;
 let nitroNeedsRelease = false;
+const PLAYER_NITRO_SPEED_BONUS = 7;
+const PLAYER_NITRO_ACCELERATION = 12;
+const PLAYER_NITRO_CONSUMPTION = 45;
 
 let currentLap = 1;
 let previousProgress = 0;
@@ -616,9 +619,9 @@ function updatePlayer(dt) {
     speed > 4;
 
   if (nitroActive) {
-    const nitroTime = Math.min(dt, nitro / 34);
-    speed += 27 * nitroTime;
-    nitro = Math.max(0, nitro - 34 * nitroTime);
+    const nitroTime = Math.min(dt, nitro / PLAYER_NITRO_CONSUMPTION);
+    speed += PLAYER_NITRO_ACCELERATION * nitroTime;
+    nitro = Math.max(0, nitro - PLAYER_NITRO_CONSUMPTION * nitroTime);
 
     if (nitro <= 0) {
       nitroActive = false;
@@ -631,7 +634,7 @@ function updatePlayer(dt) {
   speed = THREE.MathUtils.clamp(
     speed,
     -CONFIG.player.reverseSpeed,
-    CONFIG.player.maxSpeed + (nitroActive ? 14 : 0)
+    CONFIG.player.maxSpeed + (nitroActive ? PLAYER_NITRO_SPEED_BONUS : 0)
   );
 
   const keyboardSteer = (left ? 1 : 0) - (right ? 1 : 0);

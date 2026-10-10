@@ -15,8 +15,8 @@ export const CONFIG = {
     steering: 2.25
   },
   opponent: {
-    baseSpeed: 38,
-    speedStep: 2.4,
+    baseSpeed: 42,
+    speedStep: 2.8,
     speedVariation: 2.2,
     laneChangeSpeed: 8.5,
     collisionSlowdown: 0.78
