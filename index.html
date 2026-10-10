@@ -11,6 +11,10 @@
   <main id="game-shell">
     <canvas id="game-canvas" aria-label="Jogo de corrida 3D"></canvas>
 
+    <div id="virtual-joystick" class="virtual-joystick hidden" aria-hidden="true">
+      <div id="joystick-knob" class="joystick-knob"></div>
+    </div>
+
     <section id="menu-screen" class="screen">
       <div class="menu-panel">
         <p class="eyebrow">PROTÓTIPO 3D • VERSÃO 0.1</p>
@@ -25,7 +29,7 @@
           <p><kbd>W</kbd> / <kbd>↑</kbd> acelera · <kbd>S</kbd> / <kbd>↓</kbd> freia ou ré</p>
           <p><kbd>A</kbd> <kbd>D</kbd> / setas vira · <kbd>Espaço</kbd> nitro</p>
           <p><kbd>Esc</kbd> pausa ou retoma · <kbd>R</kbd> reposiciona o kart</p>
-          <p>No celular, use os controles na parte inferior da tela.</p>
+          <p>No celular, toque e arraste em qualquer área livre para acelerar, dar ré e virar. O botão NITRO continua separado.</p>
         </div>
         <p class="fine-print">Protótipo feito com HTML, CSS, JavaScript e Three.js. Arte provisória criada por código.</p>
       </div>
@@ -43,15 +47,7 @@
         <div id="item-indicator" class="item-indicator">ITEM: —</div>
       </div>
       <div class="mobile-controls" id="mobile-controls">
-        <div class="mobile-steer">
-          <button data-control="left" aria-label="Virar à esquerda">◀</button>
-          <button data-control="right" aria-label="Virar à direita">▶</button>
-        </div>
-        <div class="mobile-go">
-          <button data-control="brake" aria-label="Frear">▼</button>
-          <button data-control="nitro" class="nitro-button" aria-label="Usar nitro">NITRO</button>
-          <button data-control="accelerate" class="accelerate" aria-label="Acelerar">▲</button>
-        </div>
+        <button data-control="nitro" class="nitro-button" aria-label="Usar nitro">NITRO</button>
       </div>
     </section>
 

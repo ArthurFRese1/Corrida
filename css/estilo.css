@@ -13,7 +13,7 @@
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101522; color: var(--ink); font-family: Inter, system-ui, sans-serif; }
 button { font: inherit; cursor: pointer; border: 0; touch-action: manipulation; }
 #game-shell { position: relative; width: 100%; height: 100%; isolation: isolate; background: #101522; }
-#game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+#game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
 .screen { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 22px; background: linear-gradient(90deg, rgba(6,10,20,.76), rgba(6,10,20,.23) 70%), linear-gradient(0deg, rgba(6,10,20,.45), transparent 55%); }
 .hidden { display: none !important; }
 .menu-panel { width: min(540px, 100%); padding: clamp(24px, 4vw, 44px); border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 24px 80px rgba(0,0,0,.38); backdrop-filter: blur(14px); }
@@ -50,8 +50,11 @@ kbd { border: 1px solid #596173; border-bottom-width: 2px; border-radius: 4px; p
 .nitro-track { height: 8px; margin-top: 8px; background: rgba(255,255,255,.12); border-radius: 20px; overflow: hidden; }
 #nitro-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #21c9ff, #a6f6ff); border-radius: inherit; transition: width .1s linear; }
 .item-indicator { padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; background: rgba(10,15,25,.72); font-size: 11px; font-weight: 800; letter-spacing: .06em; }
+.virtual-joystick { position: absolute; z-index: 4; width: 112px; height: 112px; transform: translate(-50%, -50%); border: 1px solid rgba(255,255,255,.28); border-radius: 50%; background: rgba(10,15,25,.22); box-shadow: 0 8px 26px rgba(0,0,0,.18); pointer-events: none; }
+.virtual-joystick::after { content: ''; position: absolute; inset: 50%; width: 5px; height: 5px; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(255,255,255,.7); }
+.joystick-knob { --joystick-x: 0px; --joystick-y: 0px; position: absolute; left: 50%; top: 50%; width: 42px; height: 42px; transform: translate(calc(-50% + var(--joystick-x)), calc(-50% + var(--joystick-y))); border: 1px solid rgba(255,255,255,.56); border-radius: 50%; background: rgba(98,232,255,.38); box-shadow: 0 0 18px rgba(98,232,255,.24); transition: transform .04s linear; }
 #loading-note { position: absolute; z-index: 10; bottom: 8px; left: 10px; color: rgba(255,255,255,.6); font-size: 10px; pointer-events: none; }
-.mobile-controls { display: none; position: absolute; bottom: 88px; left: 14px; right: 14px; justify-content: space-between; align-items: end; pointer-events: auto; }
+.mobile-controls { display: none; position: absolute; z-index: 4; bottom: 88px; left: 14px; right: 14px; justify-content: flex-end; align-items: end; pointer-events: auto; }
 .mobile-controls button { width: 54px; height: 54px; border-radius: 50%; color: white; font-weight: 900; background: rgba(14,20,33,.78); border: 1px solid rgba(255,255,255,.25); backdrop-filter: blur(6px); }
 .mobile-steer, .mobile-go { display: flex; gap: 8px; align-items: center; }
 .mobile-controls .accelerate { background: rgba(255,183,47,.92); color: #1b1b1b; }

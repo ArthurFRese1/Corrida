@@ -7,6 +7,8 @@ import { createOpponents } from './opponents.js';
 import { createItems } from './items.js';
 
 const canvas = document.querySelector('#game-canvas');
+const joystickIndicator = document.querySelector('#virtual-joystick');
+const joystickKnob = document.querySelector('#joystick-knob');
 const loadingNote = document.querySelector('#loading-note');
 const menuScreen = document.querySelector('#menu-screen');
 const pauseScreen = document.querySelector('#pause-screen');
@@ -79,6 +81,7 @@ let gameState = 'menu';
 let speed = 0;
 let nitro = 100;
 let nitroActive = false;
+let nitroNeedsRelease = false;
 
 let currentLap = 1;
 let previousProgress = 0;
@@ -100,11 +103,22 @@ let offRoadTime = 0;
 const keys = new Set();
 
 const mobile = {
-  left: false,
-  right: false,
-  accelerate: false,
-  brake: false,
   nitro: false
+};
+
+const mobileInput = {
+  steer: 0,
+  throttle: 0,
+  brake: 0
+};
+
+const joystick = {
+  active: false,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  maxDistance: 96,
+  deadZone: 9
 };
 
 function setupPlayer() {
@@ -139,9 +153,11 @@ function raceScore(lap, progress) {
 }
 
 function resetRace() {
+  resetJoystick();
   speed = 0;
   nitro = 100;
   nitroActive = false;
+  nitroNeedsRelease = false;
 
   currentLap = 1;
   lapStage = 0;
@@ -220,6 +236,7 @@ function startRace() {
 }
 
 function showMenu() {
+  resetJoystick();
   gameState = 'menu';
 
   menuScreen.classList.remove('hidden');
@@ -353,6 +370,122 @@ function isDown(control, ...keyNames) {
   return mobile[control] || pressed(...keyNames);
 }
 
+function setJoystickVisual(x, y) {
+  joystickIndicator.style.left = `${x}px`;
+  joystickIndicator.style.top = `${y}px`;
+  joystickKnob.style.setProperty('--joystick-x', '0px');
+  joystickKnob.style.setProperty('--joystick-y', '0px');
+}
+
+function resetJoystick() {
+  joystick.active = false;
+  joystick.pointerId = null;
+  mobileInput.steer = 0;
+  mobileInput.throttle = 0;
+  mobileInput.brake = 0;
+  joystickIndicator.classList.add('hidden');
+  joystickKnob.style.setProperty('--joystick-x', '0px');
+  joystickKnob.style.setProperty('--joystick-y', '0px');
+}
+
+function endJoystick(event) {
+  if (
+    event &&
+    joystick.pointerId !== null &&
+    event.pointerId !== joystick.pointerId
+  ) {
+    return;
+  }
+
+  resetJoystick();
+}
+
+function updateJoystick(event) {
+  if (!joystick.active || event.pointerId !== joystick.pointerId) {
+    return;
+  }
+
+  const dx = event.clientX - joystick.startX;
+  const dy = event.clientY - joystick.startY;
+  const distance = Math.hypot(dx, dy);
+  const limitedDistance = Math.min(distance, joystick.maxDistance);
+  const scale = distance > 0 ? limitedDistance / distance : 0;
+  const offsetX = dx * scale;
+  const offsetY = dy * scale;
+
+  joystickKnob.style.setProperty('--joystick-x', `${offsetX}px`);
+  joystickKnob.style.setProperty('--joystick-y', `${offsetY}px`);
+
+  if (distance <= joystick.deadZone) {
+    mobileInput.steer = 0;
+    mobileInput.throttle = 0;
+    mobileInput.brake = 0;
+    return;
+  }
+
+  const normalizedX = offsetX / joystick.maxDistance;
+  const normalizedY = offsetY / joystick.maxDistance;
+
+  // O vetor já foi limitado pelo comprimento total: diagonais não passam
+  // de 1 e conservam aceleração e direção ao mesmo tempo.
+  mobileInput.steer = THREE.MathUtils.clamp(normalizedX, -1, 1);
+  mobileInput.throttle = THREE.MathUtils.clamp(-normalizedY, 0, 1);
+  mobileInput.brake = THREE.MathUtils.clamp(normalizedY, 0, 1);
+}
+
+function startJoystick(event) {
+  if (
+    gameState !== 'racing' ||
+    !raceStarted ||
+    event.pointerType === 'mouse' ||
+    joystick.active
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  joystick.active = true;
+  joystick.pointerId = event.pointerId;
+  joystick.startX = event.clientX;
+  joystick.startY = event.clientY;
+  joystick.maxDistance = Math.max(
+    72,
+    Math.min(112, Math.min(window.innerWidth, window.innerHeight) * 0.18)
+  );
+
+  joystickIndicator.style.width = `${joystick.maxDistance * 2}px`;
+  joystickIndicator.style.height = `${joystick.maxDistance * 2}px`;
+  setJoystickVisual(event.clientX, event.clientY);
+  joystickIndicator.classList.remove('hidden');
+  try {
+    canvas.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Alguns ambientes sintéticos não possuem captura nativa ativa.
+  }
+  updateJoystick(event);
+}
+
+canvas.addEventListener('pointerdown', startJoystick, { passive: false });
+canvas.addEventListener('pointermove', updateJoystick, { passive: false });
+canvas.addEventListener('pointerup', endJoystick);
+canvas.addEventListener('pointercancel', endJoystick);
+canvas.addEventListener('lostpointercapture', endJoystick);
+
+window.addEventListener('blur', () => {
+  keys.clear();
+  mobile.nitro = false;
+  nitroNeedsRelease = false;
+  resetJoystick();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    mobile.nitro = false;
+    nitroNeedsRelease = false;
+    resetJoystick();
+  }
+});
+
 function updatePlayer(dt) {
   if (invulnerable > 0) {
     invulnerable -= dt;
@@ -382,14 +515,20 @@ function updatePlayer(dt) {
   const brake = isDown('brake', 's', 'arrowdown');
   const left = isDown('left', 'a', 'arrowleft');
   const right = isDown('right', 'd', 'arrowright');
-
-  nitroActive = isDown('nitro', ' ');
+  const throttleInput = Math.max(
+    mobileInput.throttle,
+    accelerate ? 1 : 0
+  );
+  const brakeInput = Math.max(
+    mobileInput.brake,
+    brake ? 1 : 0
+  );
 
   // Aceleração e desaceleração:
   // soltar o acelerador faz o kart perder velocidade até ZERO,
   // mas nunca provoca marcha à ré automaticamente.
-  if (accelerate) {
-    speed += CONFIG.player.acceleration * dt;
+  if (throttleInput > 0) {
+    speed += CONFIG.player.acceleration * throttleInput * dt;
   } else if (speed > 0) {
     speed = Math.max(0, speed - 4.4 * dt);
   } else if (speed < 0) {
@@ -398,17 +537,39 @@ function updatePlayer(dt) {
 
   // O controle de freio pode colocar o kart em marcha à ré
   // quando ele já está parado ou andando para trás.
-  if (brake) {
+  if (brakeInput > 0) {
     if (speed > 0) {
-      speed = Math.max(0, speed - CONFIG.player.braking * dt);
+      speed = Math.max(
+        0,
+        speed - CONFIG.player.braking * brakeInput * dt
+      );
     } else {
-      speed -= CONFIG.player.acceleration * 0.65 * dt;
+      speed -= CONFIG.player.acceleration * 0.65 * brakeInput * dt;
     }
   }
 
-  if (nitroActive && nitro > 0 && speed > 4) {
-    speed += 27 * dt;
-    nitro = Math.max(0, nitro - 34 * dt);
+  const nitroRequested = isDown('nitro', ' ');
+  if (!nitroRequested) {
+    nitroNeedsRelease = false;
+  } else if (nitro <= 0) {
+    nitroNeedsRelease = true;
+  }
+
+  nitroActive =
+    nitroRequested &&
+    !nitroNeedsRelease &&
+    nitro > 0 &&
+    speed > 4;
+
+  if (nitroActive) {
+    const nitroTime = Math.min(dt, nitro / 34);
+    speed += 27 * nitroTime;
+    nitro = Math.max(0, nitro - 34 * nitroTime);
+
+    if (nitro <= 0) {
+      nitroActive = false;
+      nitroNeedsRelease = true;
+    }
   } else {
     nitro = Math.min(100, nitro + 5.2 * dt);
   }
@@ -419,7 +580,12 @@ function updatePlayer(dt) {
     CONFIG.player.maxSpeed + (nitroActive ? 14 : 0)
   );
 
-  const steer = (left ? 1 : 0) - (right ? 1 : 0);
+  const keyboardSteer = (left ? 1 : 0) - (right ? 1 : 0);
+  const steer = THREE.MathUtils.clamp(
+    keyboardSteer + mobileInput.steer,
+    -1,
+    1
+  );
 
   const steerStrength =
     0.4 + Math.min(Math.abs(speed) / CONFIG.player.maxSpeed, 1);
