@@ -5,6 +5,7 @@ import { createTrack } from './track.js';
 import { createKart } from './kart.js';
 import { createOpponents } from './opponents.js';
 import { createItems } from './items.js';
+import { resolveKartCollision } from './collisions.js';
 
 const canvas = document.querySelector('#game-canvas');
 const joystickIndicator = document.querySelector('#virtual-joystick');
@@ -79,6 +80,7 @@ let items;
 let gameState = 'menu';
 
 let speed = 0;
+const playerImpactVelocity = new THREE.Vector2();
 let nitro = 100;
 let nitroActive = false;
 let nitroNeedsRelease = false;
@@ -91,6 +93,9 @@ let raceTime = 0;
 let countdown = 3.3;
 let raceStarted = false;
 let finishTime = 0;
+const raceFinishOrder = [];
+let nextFinishPosition = 1;
+let playerFinishPosition = 0;
 
 let collectedItem = false;
 let itemType = '—';
@@ -152,9 +157,45 @@ function raceScore(lap, progress) {
   return lap + progressFromFinish(progress);
 }
 
+function resetRaceResults() {
+  raceFinishOrder.length = 0;
+  nextFinishPosition = 1;
+  playerFinishPosition = 0;
+}
+
+function registerFinishedOpponents() {
+  if (!opponents) return;
+
+  const finishedOpponents = opponents.finished ||
+    opponents.list.filter(op => op.finished);
+
+  const newResults = finishedOpponents
+    .filter(op => !raceFinishOrder.some(result => result.opponent === op))
+    .sort((a, b) => a.finishPosition - b.finishPosition);
+
+  for (const opponent of newResults) {
+    raceFinishOrder.push({
+      opponent,
+      position: nextFinishPosition++
+    });
+  }
+}
+
+function registerPlayerFinish() {
+  if (playerFinishPosition > 0) return;
+
+  playerFinishPosition = nextFinishPosition++;
+  raceFinishOrder.push({
+    player: true,
+    position: playerFinishPosition
+  });
+}
+
 function resetRace() {
   resetJoystick();
+  resetRaceResults();
   speed = 0;
+  playerImpactVelocity.set(0, 0);
   nitro = 100;
   nitroActive = false;
   nitroNeedsRelease = false;
@@ -190,6 +231,8 @@ function resetRace() {
 }
 
 function updateHud() {
+  registerFinishedOpponents();
+
   lapValue.textContent =
     `${Math.min(currentLap, CONFIG.lapsToWin)} / ${CONFIG.lapsToWin}`;
 
@@ -208,12 +251,20 @@ function updateHud() {
 
   let rank = 1;
 
-  if (opponents) {
-    for (const op of opponents.list) {
-      const opponentScore = raceScore(op.lap, op.progress);
+  if (playerFinishPosition > 0) {
+    rank = playerFinishPosition;
+  } else {
+    rank += raceFinishOrder.filter(result => !result.player).length;
 
-      if (opponentScore > playerScore) {
-        rank++;
+    if (opponents) {
+      for (const op of opponents.list) {
+        if (op.finished) continue;
+
+        const opponentScore = raceScore(op.lap, op.progress);
+
+        if (opponentScore > playerScore) {
+          rank++;
+        }
       }
     }
   }
@@ -267,6 +318,8 @@ function resumeGame() {
 }
 
 function finishRace() {
+  registerPlayerFinish();
+  updateHud();
   gameState = 'finished';
   finishTime = raceTime;
 
@@ -611,6 +664,9 @@ function updatePlayer(dt) {
     .applyQuaternion(player.root.quaternion);
 
   player.root.position.addScaledVector(forward, speed * dt);
+  player.root.position.x += playerImpactVelocity.x * dt;
+  player.root.position.z += playerImpactVelocity.y * dt;
+  playerImpactVelocity.multiplyScalar(Math.exp(-dt * 4.5));
 
   // Pequena perda de aderência em alta velocidade para deixar as curvas
   // mais agressivas sem mover o kart artificialmente de faixa.
@@ -689,7 +745,6 @@ function updatePlayer(dt) {
       lapStage = 0;
 
       if (currentLap > CONFIG.lapsToWin) {
-        updateHud();
         finishRace();
       } else {
         raceMessage.textContent = `VOLTA ${currentLap}`;
@@ -707,38 +762,48 @@ function updatePlayer(dt) {
   previousProgress = progress;
 
   // Colisão simples com os karts rivais.
-  if (opponents) {
-    for (const op of opponents.list) {
-      const dx = player.root.position.x - op.root.position.x;
-      const dz = player.root.position.z - op.root.position.z;
-      const distanceSquared = dx * dx + dz * dz;
+}
 
-      if (
-        distanceSquared < 11 &&
-        invulnerable <= 0
-      ) {
-        const distance = Math.sqrt(distanceSquared) || 1;
-        const push = new THREE.Vector3(dx / distance, 0, dz / distance);
-        const outward = new THREE.Vector3(
-          player.root.position.x / (track.rx * track.rx),
-          0,
-          player.root.position.z / (track.rz * track.rz)
-        ).normalize();
+function resolvePlayerCollisions() {
+  if (!opponents || gameState !== 'racing') return;
 
-        speed *= 0.68;
-        nitro = Math.max(0, nitro - 8);
-        invulnerable = 0.8;
+  const playerBody = {
+    root: player.root,
+    speed,
+    isPlayer: true,
+    impactVelocity: playerImpactVelocity
+  };
 
-        player.root.position.addScaledVector(push, 1.1);
-        player.root.position.addScaledVector(outward, 2.2);
-        op.speed *= CONFIG.opponent.collisionSlowdown;
-        op.bumpTimer = 0.35;
-        op.outwardOffset += 2.2;
-      }
+  for (const op of opponents.list) {
+    if (op.finished) continue;
+
+    const collision = resolveKartCollision(playerBody, op);
+
+    if (collision && invulnerable <= 0) {
+      nitro = Math.max(0, nitro - 8 * collision.impact);
+      invulnerable = 0.45;
+      op.bumpTimer = 0.35;
+      op.collisionRecovery = 0.45;
+      op.outwardOffset += 0.8 + collision.impact * 1.1;
     }
   }
 
-  updateHud();
+  speed = playerBody.speed;
+}
+
+function finishIfAllOpponentsFinished() {
+  if (
+    gameState !== 'racing' ||
+    playerFinishPosition > 0 ||
+    !opponents ||
+    opponents.list.length === 0
+  ) {
+    return;
+  }
+
+  if (opponents.list.every(op => op.finished)) {
+    finishRace();
+  }
 }
 
 function updateCamera(dt) {
@@ -803,6 +868,8 @@ function animate(now) {
         speed,
         raceStarted
       );
+      finishIfAllOpponentsFinished();
+      resolvePlayerCollisions();
       updateHud();
 
       if (gameState === 'finished') {

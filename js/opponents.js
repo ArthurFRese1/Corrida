@@ -1,6 +1,7 @@
 
 import { createKart } from './kart.js';
 import { CONFIG } from './config.js';
+import { resolveKartCollision } from './collisions.js';
 
 const COLORS = [
   0xff5252,
@@ -22,12 +23,43 @@ const NITRO_SPEED_BONUS = 14;
 const OUTWARD_RECOVERY_SPEED = 1.6;
 
 const PERSONALITIES = [
-  { speedFactor: 0.98, aggression: 0.25, preferredLane: -3.4 },
-  { speedFactor: 1.02, aggression: 0.55, preferredLane: 3.4 },
-  { speedFactor: 1.06, aggression: 0.8, preferredLane: -3.4 },
-  { speedFactor: 1.0, aggression: 0.45, preferredLane: 3.4 },
-  { speedFactor: 1.04, aggression: 0.65, preferredLane: -3.4 },
-  { speedFactor: 1.08, aggression: 0.9, preferredLane: 3.4 }
+  {
+    name: 'agressivo',
+    aggression: 0.86,
+    riskTolerance: 0.82,
+    defense: 0.55,
+    preferredLane: -3.4
+  },
+  {
+    name: 'tecnico',
+    aggression: 0.64,
+    riskTolerance: 0.58,
+    defense: 0.72,
+    preferredLane: 3.4
+  },
+  {
+    name: 'oportunista',
+    aggression: 0.7,
+    riskTolerance: 0.68,
+    defense: 0.42,
+    preferredLane: -3.4
+  },
+  {
+    name: 'defensivo',
+    aggression: 0.48,
+    riskTolerance: 0.4,
+    defense: 0.86,
+    preferredLane: 3.4
+  }
+];
+
+const PILOT_PROFILES = [
+  { cornerSkill: 0.62, brakingSkill: 0.58, trajectorySkill: 0.66, overtakingSkill: 0.72, defenseSkill: 0.5, recoverySkill: 0.56 },
+  { cornerSkill: 0.86, brakingSkill: 0.84, trajectorySkill: 0.88, overtakingSkill: 0.7, defenseSkill: 0.78, recoverySkill: 0.82 },
+  { cornerSkill: 0.68, brakingSkill: 0.64, trajectorySkill: 0.61, overtakingSkill: 0.86, defenseSkill: 0.43, recoverySkill: 0.6 },
+  { cornerSkill: 0.58, brakingSkill: 0.72, trajectorySkill: 0.74, overtakingSkill: 0.52, defenseSkill: 0.88, recoverySkill: 0.66 },
+  { cornerSkill: 0.76, brakingSkill: 0.68, trajectorySkill: 0.71, overtakingSkill: 0.78, defenseSkill: 0.62, recoverySkill: 0.72 },
+  { cornerSkill: 0.7, brakingSkill: 0.6, trajectorySkill: 0.64, overtakingSkill: 0.8, defenseSkill: 0.5, recoverySkill: 0.58 }
 ];
 
 function forwardDistance(from, to) {
@@ -49,6 +81,7 @@ function laneIsOccupied(opponents, self, lane, playerProgress) {
 
 export function createOpponents(scene, track, count) {
   const opponents = [];
+  const finishedOpponents = [];
   let finishSequence = 0;
 
   // Posições iniciais dos NPCs.
@@ -71,6 +104,7 @@ export function createOpponents(scene, track, count) {
     const baseSpeed = CONFIG.opponent.baseSpeed +
       (i % 3) * CONFIG.opponent.speedStep;
     const personality = PERSONALITIES[i % PERSONALITIES.length];
+    const pilot = PILOT_PROFILES[i % PILOT_PROFILES.length];
 
     opponents.push({
       ...kart,
@@ -81,6 +115,7 @@ export function createOpponents(scene, track, count) {
       speed: baseSpeed,
       baseSpeed,
       personality,
+      pilot,
 
       // Número de linhas de chegada cruzadas após a largada.
       lap: 0,
@@ -94,17 +129,29 @@ export function createOpponents(scene, track, count) {
       nitroCooldown: 0,
       outwardOffset: 0,
       rank: i + 2,
-      wobble: Math.random() * Math.PI * 2
+      wobble: Math.random() * Math.PI * 2,
+      intent: 'cruise',
+      intentTimer: 0,
+      decisionCooldown: 0,
+      noProgressTime: 0,
+      recoveryTimer: 0,
+      recoverySide: i % 2 === 0 ? -1 : 1,
+      offRoad: false,
+      collisionRecovery: 0
     });
   }
 
   return {
     list: opponents,
+    finished: finishedOpponents,
 
     update(dt, playerProgress, playerSpeed, raceStarted = true) {
       for (const op of opponents) {
         op.bumpTimer = Math.max(0, op.bumpTimer - dt);
         op.nitroCooldown = Math.max(0, op.nitroCooldown - dt);
+        op.decisionCooldown = Math.max(0, op.decisionCooldown - dt);
+        op.intentTimer = Math.max(0, op.intentTimer - dt);
+        op.collisionRecovery = Math.max(0, op.collisionRecovery - dt);
         op.outwardOffset = Math.max(
           0,
           op.outwardOffset - OUTWARD_RECOVERY_SPEED * dt
@@ -112,6 +159,12 @@ export function createOpponents(scene, track, count) {
 
         if (!op.finished && raceStarted) {
           const oldProgress = op.progress;
+
+          op.offRoad = Math.abs(op.lane - op.outwardOffset) >
+            track.roadWidth * 0.5;
+          op.noProgressTime = Math.abs(op.speed) < 6
+            ? op.noProgressTime + dt
+            : Math.max(0, op.noProgressTime - dt * 0.5);
 
           op.previousProgress = oldProgress;
 
@@ -133,34 +186,100 @@ export function createOpponents(scene, track, count) {
           }
 
           const playerDistance = forwardDistance(op.progress, playerProgress);
+          const playerClosing = playerSpeed <= op.speed + 4;
           if (
-            playerSpeed > 0 &&
             playerDistance > 0 &&
             playerDistance < closestDistance &&
+            playerClosing &&
             Math.abs(op.lane) < 3.2
           ) {
             obstacleAhead = { lane: 0 };
             closestDistance = playerDistance;
           }
 
-          if (obstacleAhead && op.personality.aggression > 0.35) {
-            const candidates = [
-              -LANE_LIMIT,
-              LANE_LIMIT,
-              op.personality.preferredLane
-            ];
+          const challenger = opponents.find(other => {
+            if (other === op || other.finished) return false;
 
-            const freeLane = candidates.find(candidate =>
-              !laneIsOccupied(opponents, op, candidate, playerProgress)
+            const behindDistance = forwardDistance(
+              other.progress,
+              op.progress
             );
 
-            if (freeLane !== undefined) {
-              op.targetLane = freeLane;
+            return behindDistance > 0 &&
+              behindDistance < 0.045 &&
+              other.speed > op.speed + 2;
+          });
+
+          if (op.noProgressTime > 1.6) {
+            op.intent = 'recover';
+            op.intentTimer = 0.35;
+            op.recoveryTimer -= dt;
+
+            if (op.recoveryTimer <= 0) {
+              op.recoverySide *= -1;
+              op.targetLane = op.recoverySide * LANE_LIMIT;
+              op.recoveryTimer = 2.2 +
+                (1 - op.pilot.recoverySkill) * 0.8;
             }
-          } else if (!obstacleAhead) {
+          } else if (op.offRoad) {
+            op.intent = 'recover';
+            op.intentTimer = 0.4;
             op.targetLane +=
-              (op.personality.preferredLane - op.targetLane) *
-              Math.min(1, dt * 0.8);
+              (op.outwardOffset - op.targetLane) *
+              Math.min(1, dt * (0.75 + op.pilot.recoverySkill));
+          } else if (op.intentTimer <= 0 && op.decisionCooldown <= 0) {
+            const attackQuality =
+              op.personality.aggression * 0.35 +
+              op.personality.riskTolerance * 0.2 +
+              op.pilot.overtakingSkill * 0.45;
+
+            if (obstacleAhead && attackQuality > 0.32) {
+              const preferred = op.personality.preferredLane;
+              const candidates = op.personality.name === 'tecnico'
+                ? [preferred, -preferred, -LANE_LIMIT, LANE_LIMIT]
+                : [
+                  preferred,
+                  -preferred,
+                  op.lane < 0 ? LANE_LIMIT : -LANE_LIMIT
+                ];
+
+              const freeLane = candidates.find(candidate =>
+                !laneIsOccupied(opponents, op, candidate, playerProgress)
+              );
+
+              if (freeLane !== undefined) {
+                op.targetLane = freeLane;
+                op.intent = 'overtake';
+                op.intentTimer = 0.7 +
+                  op.pilot.overtakingSkill * 0.7;
+              } else {
+                op.intent = 'follow';
+                op.intentTimer = 0.55;
+              }
+            } else if (challenger && op.personality.defense > 0.45) {
+              const blockLane = Math.max(
+                -LANE_LIMIT,
+                Math.min(
+                  LANE_LIMIT,
+                  op.lane + Math.sign(op.lane - challenger.lane) * 1.15
+                )
+              );
+
+              if (!laneIsOccupied(opponents, op, blockLane, playerProgress)) {
+                op.targetLane = blockLane;
+                op.intent = 'defend';
+                op.intentTimer = 0.65 +
+                  op.pilot.defenseSkill * 0.45;
+              }
+            } else {
+              op.targetLane = op.personality.preferredLane;
+              op.intent = 'cruise';
+              op.intentTimer = 0.45 +
+                op.pilot.trajectorySkill * 0.6;
+            }
+
+            op.decisionCooldown = 0.18 +
+              (1 - op.pilot.trajectorySkill) * 0.35;
           }
 
           const laneDelta = op.targetLane - op.lane;
@@ -173,7 +292,9 @@ export function createOpponents(scene, track, count) {
             !op.nitroActive &&
             op.nitro > 0 &&
             op.nitroCooldown <= 0 &&
-            (!obstacleAhead || op.personality.aggression > 0.55)
+            (!obstacleAhead ||
+              op.personality.aggression > 0.55 ||
+              op.intent === 'overtake')
           ) {
             op.nitroActive = true;
             op.nitroTimer = NITRO_DURATION;
@@ -215,6 +336,7 @@ export function createOpponents(scene, track, count) {
             if (op.lap >= CONFIG.lapsToWin) {
               op.finished = true;
               op.finishPosition = ++finishSequence;
+              finishedOpponents.push(op);
               op.speed = 0;
               op.nitroActive = false;
             }
@@ -227,13 +349,32 @@ export function createOpponents(scene, track, count) {
             const blocked = obstacleAhead &&
               closestDistance < 0.035 &&
               Math.abs(op.targetLane - op.lane) < 1.2;
-            const targetSpeed = op.baseSpeed * op.personality.speedFactor +
+            const curveDemand = Math.abs(
+              Math.sin(op.progress * Math.PI * 2)
+            );
+            const curvePenalty = curveDemand *
+              (1 - op.pilot.cornerSkill) * 7;
+            const brakingPenalty = curveDemand *
+              (1 - op.pilot.brakingSkill) * 2.5;
+            const trajectoryPenalty =
+              (1 - op.pilot.trajectorySkill) * 1.5;
+            const terrainFactor = op.offRoad
+              ? 0.42 + op.pilot.recoverySkill * 0.16
+              : 1;
+            const targetSpeed = Math.max(0, (
+              op.baseSpeed +
               Math.sin(performance.now() * 0.0007 + op.wobble) *
               CONFIG.opponent.speedVariation -
+              curvePenalty -
+              brakingPenalty -
+              trajectoryPenalty -
               (blocked ? 5 : 0) -
-              (op.bumpTimer > 0 ? 6 : 0);
+              (op.bumpTimer > 0 ? 6 : 0)
+            ) * terrainFactor);
 
-            op.speed += (targetSpeed - op.speed) * Math.min(1, dt * 3.5);
+            const controlRate = op.collisionRecovery > 0 ? 0.9 : 3.5;
+            op.speed += (targetSpeed - op.speed) *
+              Math.min(1, dt * controlRate);
           }
         }
 
@@ -245,6 +386,12 @@ export function createOpponents(scene, track, count) {
         op.root.position.copy(p.position);
         op.root.position.y = 0.03;
         op.root.rotation.y = p.yaw;
+
+        if (op.impactVelocity) {
+          op.root.position.x += op.impactVelocity.x * dt;
+          op.root.position.z += op.impactVelocity.y * dt;
+          op.impactVelocity.multiplyScalar(Math.exp(-dt * 4.2));
+        }
 
         op.wheels.forEach(wheel => {
           wheel.rotation.x += dt * (
@@ -259,10 +406,10 @@ export function createOpponents(scene, track, count) {
         for (let j = i + 1; j < opponents.length; j++) {
           const first = opponents[i];
           const second = opponents[j];
-          const dx = first.root.position.x - second.root.position.x;
-          const dz = first.root.position.z - second.root.position.z;
+          if (first.finished || second.finished) continue;
 
-          if (dx * dx + dz * dz >= 9) continue;
+          const collision = resolveKartCollision(first, second);
+          if (!collision) continue;
 
           if (first.lane <= second.lane) {
             first.targetLane = -LANE_LIMIT;
@@ -272,10 +419,10 @@ export function createOpponents(scene, track, count) {
             second.targetLane = -LANE_LIMIT;
           }
 
-          first.speed *= CONFIG.opponent.collisionSlowdown;
-          second.speed *= CONFIG.opponent.collisionSlowdown;
-          first.outwardOffset += 2.4;
-          second.outwardOffset += 2.4;
+          first.outwardOffset += 0.8 + collision.impact * 1.1;
+          second.outwardOffset += 0.8 + collision.impact * 1.1;
+          first.collisionRecovery = 0.45;
+          second.collisionRecovery = 0.45;
           first.bumpTimer = 0.35;
           second.bumpTimer = 0.35;
         }
