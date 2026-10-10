@@ -428,7 +428,9 @@ function updateJoystick(event) {
 
   // O vetor já foi limitado pelo comprimento total: diagonais não passam
   // de 1 e conservam aceleração e direção ao mesmo tempo.
-  mobileInput.steer = THREE.MathUtils.clamp(normalizedX, -1, 1);
+  // No telefone, o eixo horizontal do gesto precisa corresponder ao lado
+  // visual esperado pelo kart: dedo à esquerda vira para a esquerda.
+  mobileInput.steer = THREE.MathUtils.clamp(-normalizedX, -1, 1);
   mobileInput.throttle = THREE.MathUtils.clamp(-normalizedY, 0, 1);
   mobileInput.brake = THREE.MathUtils.clamp(normalizedY, 0, 1);
 }
