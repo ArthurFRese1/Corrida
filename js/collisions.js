@@ -3,6 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.m
 const HALF_WIDTH = 1.2;
 const HALF_LENGTH = 1.8;
 const POSITION_SLOP = 0.015;
+const MAX_POSITION_CORRECTION = 0.45;
 const RESTITUTION = 0.12;
 
 function axisFromYaw(yaw) {
@@ -99,8 +100,10 @@ export function resolveKartCollision(first, second) {
   const firstMass = first.isPlayer ? 1.15 : 1;
   const secondMass = second.isPlayer ? 1.15 : 1;
   const inverseMassTotal = 1 / firstMass + 1 / secondMass;
-  const correction = Math.max(0, collision.penetration + POSITION_SLOP) /
-    inverseMassTotal;
+  const correction = Math.min(
+    MAX_POSITION_CORRECTION,
+    Math.max(0, collision.penetration + POSITION_SLOP)
+  ) / inverseMassTotal;
 
   first.root.position.x += collision.normal.x * correction / firstMass;
   first.root.position.z += collision.normal.y * correction / firstMass;

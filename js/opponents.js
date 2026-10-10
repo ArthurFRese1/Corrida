@@ -66,7 +66,33 @@ function forwardDistance(from, to) {
   return (to - from + 1) % 1;
 }
 
-function laneIsOccupied(opponents, self, lane, playerProgress) {
+function laneAtPosition(track, progress, position) {
+  if (!position) return 0;
+
+  const center = track.pointAt(progress, 0).position;
+  const lanePoint = track.pointAt(progress, 1).position;
+  const laneVector = {
+    x: lanePoint.x - center.x,
+    z: lanePoint.z - center.z
+  };
+  const lengthSquared = laneVector.x * laneVector.x +
+    laneVector.z * laneVector.z;
+
+  if (lengthSquared <= 0.0001) return 0;
+
+  return (
+    (position.x - center.x) * laneVector.x +
+    (position.z - center.z) * laneVector.z
+  ) / lengthSquared;
+}
+
+function laneIsOccupied(
+  opponents,
+  self,
+  lane,
+  playerProgress,
+  playerLane = 0
+) {
   return opponents.some(other => {
     if (other === self || other.finished) return false;
 
@@ -74,8 +100,9 @@ function laneIsOccupied(opponents, self, lane, playerProgress) {
     return Math.abs(other.lane - lane) < 2.2 &&
       (distance < SAFE_LANE_GAP || distance > 1 - SAFE_LANE_GAP);
   }) || (
-    forwardDistance(self.progress, playerProgress) < SAFE_LANE_GAP &&
-    Math.abs(lane) < 2.2
+    (forwardDistance(self.progress, playerProgress) < SAFE_LANE_GAP ||
+      forwardDistance(playerProgress, self.progress) < SAFE_LANE_GAP) &&
+    Math.abs(playerLane - lane) < 2.2
   );
 }
 
@@ -105,6 +132,11 @@ export function createOpponents(scene, track, count) {
       (i % 3) * CONFIG.opponent.speedStep;
     const personality = PERSONALITIES[i % PERSONALITIES.length];
     const pilot = PILOT_PROFILES[i % PILOT_PROFILES.length];
+    const startPoint = track.pointAt(progress, lane);
+
+    kart.root.position.copy(startPoint.position);
+    kart.root.position.y = 0.03;
+    kart.root.rotation.y = startPoint.yaw;
 
     opponents.push({
       ...kart,
@@ -132,6 +164,7 @@ export function createOpponents(scene, track, count) {
       wobble: Math.random() * Math.PI * 2,
       intent: 'cruise',
       intentTimer: 0,
+      overtakeTarget: null,
       decisionCooldown: 0,
       noProgressTime: 0,
       recoveryTimer: 0,
@@ -145,7 +178,13 @@ export function createOpponents(scene, track, count) {
     list: opponents,
     finished: finishedOpponents,
 
-    update(dt, playerProgress, playerSpeed, raceStarted = true) {
+    update(
+      dt,
+      playerProgress,
+      playerSpeed,
+      raceStarted = true,
+      playerPosition = null
+    ) {
       for (const op of opponents) {
         op.bumpTimer = Math.max(0, op.bumpTimer - dt);
         op.nitroCooldown = Math.max(0, op.nitroCooldown - dt);
@@ -159,6 +198,11 @@ export function createOpponents(scene, track, count) {
 
         if (!op.finished && raceStarted) {
           const oldProgress = op.progress;
+          const playerLane = laneAtPosition(
+            track,
+            playerProgress,
+            playerPosition
+          );
 
           op.offRoad = Math.abs(op.lane - op.outwardOffset) >
             track.roadWidth * 0.5;
@@ -191,9 +235,16 @@ export function createOpponents(scene, track, count) {
             playerDistance > 0 &&
             playerDistance < closestDistance &&
             playerClosing &&
-            Math.abs(op.lane) < 3.2
+            Math.abs(playerLane - op.lane) < 3.2
           ) {
-            obstacleAhead = { lane: 0 };
+            obstacleAhead = {
+              id: 'player',
+              root: playerPosition ? { position: playerPosition } : null,
+              progress: playerProgress,
+              lane: playerLane,
+              speed: playerSpeed,
+              finished: false
+            };
             closestDistance = playerDistance;
           }
 
@@ -210,8 +261,23 @@ export function createOpponents(scene, track, count) {
               other.speed > op.speed + 2;
           });
 
+          const activeOvertake = op.intent === 'overtake' &&
+            op.overtakeTarget &&
+            !op.overtakeTarget.finished;
+          const overtakeCompleted = activeOvertake &&
+            forwardDistance(op.overtakeTarget.progress, op.progress) < 0.028 &&
+            Math.abs(op.lane - op.overtakeTarget.lane) > 1.2;
+          const overtakeBlocked = activeOvertake && laneIsOccupied(
+            opponents,
+            op,
+            op.targetLane,
+            playerProgress,
+            playerLane
+          );
+
           if (op.noProgressTime > 1.6) {
             op.intent = 'recover';
+            op.overtakeTarget = null;
             op.intentTimer = 0.35;
             op.recoveryTimer -= dt;
 
@@ -223,10 +289,19 @@ export function createOpponents(scene, track, count) {
             }
           } else if (op.offRoad) {
             op.intent = 'recover';
+            op.overtakeTarget = null;
             op.intentTimer = 0.4;
             op.targetLane +=
               (op.outwardOffset - op.targetLane) *
               Math.min(1, dt * (0.75 + op.pilot.recoverySkill));
+          } else if (activeOvertake && !overtakeCompleted && !overtakeBlocked) {
+            // Mantém a faixa escolhida até a ultrapassagem realmente
+            // colocar o alvo para trás, evitando troca nervosa de intenção.
+            op.intentTimer = Math.max(op.intentTimer, 0.25);
+          } else if (activeOvertake) {
+            op.intent = 'cruise';
+            op.overtakeTarget = null;
+            op.intentTimer = 0;
           } else if (op.intentTimer <= 0 && op.decisionCooldown <= 0) {
             const attackQuality =
               op.personality.aggression * 0.35 +
@@ -244,16 +319,26 @@ export function createOpponents(scene, track, count) {
                 ];
 
               const freeLane = candidates.find(candidate =>
-                !laneIsOccupied(opponents, op, candidate, playerProgress)
+                !laneIsOccupied(
+                  opponents,
+                  op,
+                  candidate,
+                  playerProgress,
+                  playerLane
+                )
               );
 
               if (freeLane !== undefined) {
                 op.targetLane = freeLane;
                 op.intent = 'overtake';
+                op.overtakeTarget = obstacleAhead.root
+                  ? obstacleAhead
+                  : null;
                 op.intentTimer = 0.7 +
                   op.pilot.overtakingSkill * 0.7;
               } else {
                 op.intent = 'follow';
+                op.overtakeTarget = null;
                 op.intentTimer = 0.55;
               }
             } else if (challenger && op.personality.defense > 0.45) {
@@ -265,15 +350,23 @@ export function createOpponents(scene, track, count) {
                 )
               );
 
-              if (!laneIsOccupied(opponents, op, blockLane, playerProgress)) {
+              if (!laneIsOccupied(
+                opponents,
+                op,
+                blockLane,
+                playerProgress,
+                playerLane
+              )) {
                 op.targetLane = blockLane;
                 op.intent = 'defend';
+                op.overtakeTarget = null;
                 op.intentTimer = 0.65 +
                   op.pilot.defenseSkill * 0.45;
               }
             } else {
               op.targetLane = op.personality.preferredLane;
               op.intent = 'cruise';
+              op.overtakeTarget = null;
               op.intentTimer = 0.45 +
                 op.pilot.trajectorySkill * 0.6;
             }
@@ -383,7 +476,10 @@ export function createOpponents(scene, track, count) {
           op.lane - op.outwardOffset
         );
 
-        op.root.position.copy(p.position);
+        const pathCorrectionRate = op.collisionRecovery > 0 ? 1.1 : 4.5;
+        const pathCorrection = Math.min(1, dt * pathCorrectionRate);
+        op.root.position.x += (p.position.x - op.root.position.x) * pathCorrection;
+        op.root.position.z += (p.position.z - op.root.position.z) * pathCorrection;
         op.root.position.y = 0.03;
         op.root.rotation.y = p.yaw;
 

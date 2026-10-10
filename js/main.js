@@ -866,7 +866,8 @@ function animate(now) {
         dt,
         track.progressAt(player.root.position),
         speed,
-        raceStarted
+        raceStarted,
+        player.root.position
       );
       finishIfAllOpponentsFinished();
       resolvePlayerCollisions();
