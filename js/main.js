@@ -433,7 +433,7 @@ function updateJoystick(event) {
   mobileInput.steer = THREE.MathUtils.clamp(normalizedX, -1, 1);
   mobileInput.throttle = THREE.MathUtils.clamp(-normalizedY, 0, 1);
   mobileInput.brake = THREE.MathUtils.clamp(normalizedY, 0, 1);
-}THREE.MathUtils.clamp(normalizedX, 1, -1)
+}THREE.MathUtils.clamp(normalizedX, -1, 1)
 
 function startJoystick(event) {
   if (
